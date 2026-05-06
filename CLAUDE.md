@@ -2,6 +2,12 @@
 
 A single-file browser-based 10×10 International Checkers game with AI opponent and local multiplayer.
 
+## Live deployment
+
+- **GitHub repo:** https://github.com/rjjeutong/checkers
+- **GitHub Pages (live):** https://rjjeutong.github.io/checkers/
+- Branch: `master` · root folder · deployed via GitHub Pages (repo must stay public)
+
 ## Project structure
 
 ```
@@ -45,6 +51,7 @@ Only dark squares `(row + col) % 2 === 0` ever hold pieces.
 
 - **`gameMode = 'ai'`** — White is human, Black is the AI Worker. W/D/L stats are tracked.
 - **`gameMode = 'friend'`** — both colors are human (pass-and-play). No AI runs. Stats hidden.
+- **`gameMode = 'online'`** — placeholder in Settings UI; not yet implemented (see roadmap).
 
 ### AI
 
@@ -74,13 +81,41 @@ Undo in AI mode always resets `turn` to `'w'`; in friend mode it restores the sa
 | Sound Effects | On / Off | Immediate |
 | Game Mode | vs Computer / vs Friend / Online | Online is a placeholder; takes effect next New Game |
 
-## Planned / future work
+## Roadmap
 
-- Native iOS & Android packaging (Capacitor)
-- App Store / Google Play icons and splash screens
-- Online multiplayer (requires a backend or a real-time service like Firebase or Supabase)
+### Next: Online multiplayer (Firebase)
+
+Agreed approach — Firebase Realtime Database, anonymous auth, no sign-up required.
+
+**Player flow:**
+1. Player A taps "Create game" → receives a 4-digit room code
+2. Player B taps "Join game" → enters the code
+3. Moves sync in real time via Firebase
+4. No accounts needed — anonymous sessions only
+
+**Why Firebase:**
+- Free tier covers casual game traffic easily
+- Works inside a Capacitor WebView without native plugins
+- Realtime Database is simple to wire to the existing board state
+
+**New file needed:** `firebase.js` (or inline in `index.html`) — initialise app, write moves to `/rooms/{code}/moves`, listen for opponent moves.
+
+**App store impact:** None blocking. Adds one requirement: a Privacy Policy page (needed anyway for store submission). Use a free generator (e.g. privacypolicygenerator.info).
+
+### After that: Native app (Capacitor)
+
+- Install Node.js + Capacitor CLI
+- `npx cap init` → `npx cap add ios` + `npx cap add android`
+- Copy `index.html` (and `firebase.js`) into the Capacitor `www/` folder
+- Generate icons and splash screens with `@capacitor/assets`
+- Build iOS in Xcode (requires a Mac) · Build Android in Android Studio
+- Submit to App Store and Google Play
+
+### Remaining nice-to-haves
+
 - Move log / game notation
 - Per-turn timer
+- Privacy Policy page (required before store submission)
 
 ## Development
 
