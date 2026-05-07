@@ -1162,7 +1162,7 @@ function startOnlineGame(){
   onlineMovesRef=onlineRoomRef.child('moves');
   onlineMoveListener=onlineMovesRef.on('child_added',snap=>{
     const mv=snap.val();
-    if(mv.uid===myUid) return;
+    if(mv.role===onlineRole) return;
     receiveOnlineMove(mv);
   });
 
@@ -1177,7 +1177,7 @@ function startOnlineGame(){
 function sendOnlineMove(fr,fc,move){
   if(!onlineMovesRef) return;
   onlineMovesRef.push({
-    uid:myUid, fr, fc,
+    role:onlineRole, fr, fc,
     tr:move.r, tc:move.c,
     caps:(move.caps||[]).map(cp=>({r:cp.r,c:cp.c})),
     ts:Date.now(),
