@@ -859,16 +859,6 @@ function setupFriendTurn(){
   const mustList=mustCaptureList(turn,board);
   const hasMust=mustList.length>0;
   const label=turn==='w'?'White':'Black';
-
-  if(hasMust&&mustList.length===1){
-    const op=mustList[0];
-    const lands=getSingleCaptures(op.r,op.c,board,new Set());
-    if(lands.length===1){
-      sel={r:op.r,c:op.c}; startHumanCapture();
-      setStatus(`${label}'s turn — must capture`,'your-turn');
-      setBoardGlow('your-turn'); updateUndo(); return;
-    }
-  }
   setStatus(`${label}'s turn${hasMust?' — must capture':''}`, 'your-turn');
   setBoardGlow('your-turn'); updateUndo(); draw();
 }
@@ -911,16 +901,7 @@ function finishAiTurn(){
   if(getAllMoves('w',board).length===0){ declareWin('b'); return; }
 
   calcGreenSquares();
-  const mustList=mustCaptureList('w',board);
-  const hasMust=mustList.length>0;
-  if(hasMust&&mustList.length===1){
-    const op=mustList[0];
-    const lands=getSingleCaptures(op.r,op.c,board,new Set());
-    if(lands.length===1){
-      sel={r:op.r,c:op.c}; startHumanCapture();
-      setStatus('Your turn — must capture','your-turn'); setBoardGlow('your-turn'); updateUndo(); return;
-    }
-  }
+  const hasMust=hasMustCapture('w',board);
   setStatus('Your turn'+(hasMust?' — must capture':''),'your-turn');
   setBoardGlow('your-turn'); updateUndo(); draw();
 }
@@ -971,7 +952,8 @@ function draw(){
   }
 
   // Green: playable squares
-  const showGreen=!sel&&!midCapture&&!aiThinking&&!animating&&!gameOver&&(gameMode==='friend'||turn==='w');
+  const isHumanTurn=gameMode==='friend'||(gameMode==='ai'&&turn==='w')||(gameMode==='online'&&turn===onlineRole);
+  const showGreen=!sel&&!midCapture&&!aiThinking&&!animating&&!gameOver&&isHumanTurn;
   if(showGreen){
     for(const g of greenSquares){
       ctx.fillStyle='rgba(40,180,80,0.22)'; ctx.fillRect(g.c*CS,g.r*CS,CS,CS);
