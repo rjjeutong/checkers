@@ -258,18 +258,24 @@ function getMoves(r,c,bd){
       if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&!bd[nr][nc])ms.push({r:nr,c:nc,caps:[]});}
   }return ms;
 }
-function getCaptures(r,c,bd){
+function getCaptures(r,c,bd,vis=null){
   const p=bd[r][c];if(!p)return[];
-  const caps=[];
+  if(!vis)vis=new Set();vis.add(r+','+c);const caps=[];
   if(p.king){
     for(const[dr,dc]of ALL_DIRS){
       let mr=r+dr,mc=c+dc;
       while(mr>=0&&mr<ROWS&&mc>=0&&mc<COLS&&!bd[mr][mc]){mr+=dr;mc+=dc;}
       if(mr<0||mr>=ROWS||mc<0||mc>=COLS)continue;
       const mid=bd[mr][mc];if(!mid||mid.color===p.color)continue;
+      const mk=mr+','+mc;if(vis.has(mk))continue;
       let lr=mr+dr,lc=mc+dc;
       while(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc]){
-        caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+        const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
+        bd2[lr][lc]={...bd2[r][c]};bd2[r][c]=null;bd2[mr][mc]=null;
+        const v2=new Set(vis);v2.add(mk);
+        const further=getCaptures(lr,lc,bd2,v2);
+        if(further.length===0)caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+        else for(const f of further)caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
         lr+=dr;lc+=dc;
       }
     }
@@ -279,7 +285,13 @@ function getCaptures(r,c,bd){
       if(lr<0||lr>=ROWS||lc<0||lc>=COLS)continue;
       const mid=bd[mr][mc];if(!mid||mid.color===p.color)continue;
       if(bd[lr][lc])continue;
-      caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+      const mk=mr+','+mc;if(vis.has(mk))continue;
+      const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
+      bd2[lr][lc]={...bd2[r][c]};bd2[r][c]=null;bd2[mr][mc]=null;
+      const v2=new Set(vis);v2.add(mk);
+      const further=getCaptures(lr,lc,bd2,v2);
+      if(further.length===0)caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+      else for(const f of further)caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
     }
   }return caps;
 }
@@ -553,8 +565,9 @@ function getSingleCaptures(r,c,bd,removedKeys){
   return caps;
 }
 
-function getCaptures(r,c,bd){
+function getCaptures(r,c,bd,vis=null){
   const p=bd[r][c]; if(!p) return [];
+  if(!vis) vis=new Set(); vis.add(`${r},${c}`);
   const caps=[];
   if(p.king){
     for(const [dr,dc] of ALL_DIRS){
@@ -562,9 +575,15 @@ function getCaptures(r,c,bd){
       while(mr>=0&&mr<ROWS&&mc>=0&&mc<COLS&&!bd[mr][mc]){mr+=dr;mc+=dc;}
       if(mr<0||mr>=ROWS||mc<0||mc>=COLS) continue;
       const mid=bd[mr][mc]; if(!mid||mid.color===p.color) continue;
+      const mk=`${mr},${mc}`; if(vis.has(mk)) continue;
       let lr=mr+dr,lc=mc+dc;
       while(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc]){
-        caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+        const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
+        bd2[lr][lc]={...bd2[r][c]}; bd2[r][c]=null; bd2[mr][mc]=null;
+        const v2=new Set(vis); v2.add(mk);
+        const further=getCaptures(lr,lc,bd2,v2);
+        if(further.length===0) caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+        else for(const f of further) caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
         lr+=dr; lc+=dc;
       }
     }
@@ -574,7 +593,13 @@ function getCaptures(r,c,bd){
       if(lr<0||lr>=ROWS||lc<0||lc>=COLS) continue;
       const mid=bd[mr][mc]; if(!mid||mid.color===p.color) continue;
       if(bd[lr][lc]) continue;
-      caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+      const mk=`${mr},${mc}`; if(vis.has(mk)) continue;
+      const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
+      bd2[lr][lc]={...bd2[r][c]}; bd2[r][c]=null; bd2[mr][mc]=null;
+      const v2=new Set(vis); v2.add(mk);
+      const further=getCaptures(lr,lc,bd2,v2);
+      if(further.length===0) caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+      else for(const f of further) caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
     }
   }
   return caps;
@@ -788,7 +813,9 @@ function doHumanCaptureStep(landing){
   midBoardSnap[midPiecePos.r][midPiecePos.c]=null;
   midBoardSnap[landing.r][landing.c]=p;
   midPiecePos={r:landing.r,c:landing.c};
-  finalizeHumanCapture();
+  refreshMidCaptureLands();
+  if(midMustLands.length===0) finalizeHumanCapture();
+  else draw();
 }
 function finalizeHumanCapture(){
   const old=board.map(r=>r.map(x=>x?{...x}:null));
