@@ -236,6 +236,7 @@ button.act:disabled { opacity: 0.3; cursor: default; }
     <button class="act" onclick="openSettings()">&#9881; Settings</button>
     <button class="act" id="btn-undo" onclick="undoMove()" disabled>Undo</button>
     <button class="act" onclick="newGame()">New Game</button>
+    <button class="act" id="btn-rematch" onclick="requestRematch()" style="display:none">Rematch</button>
   </div>
   <div id="info">Green = playable pieces. Blue = where to land. Tap a different piece to change during captures.</div>
 </div>
@@ -649,6 +650,7 @@ function declareWin(winner){
     const iWin=winner===onlineRole;
     setStatus(iWin?'You win!':'You lose!',iWin?'game-over':'game-lose');
     if(iWin) sndWin(); else sndLose();
+    const br=document.getElementById('btn-rematch'); br.style.display=''; br.disabled=false;
   } else if(gameMode==='friend'){
     const name=winner==='w'?'White':'Black';
     setStatus(`${name} wins!`, winner==='w'?'game-over':'game-lose');
@@ -664,6 +666,7 @@ function declareWin(winner){
 function declareDraw(reason){
   gameOver=true; setBoardGlow('');
   if(gameMode==='ai'){ draws++; updateStats(); }
+  if(gameMode==='online'){ const br=document.getElementById('btn-rematch'); br.style.display=''; br.disabled=false; }
   setStatus(`Draw — ${reason}`,'draw'); sndDraw(); draw();
 }
 
@@ -860,7 +863,9 @@ function setupFriendTurn(){
   const hasMust=mustList.length>0;
   const label=turn==='w'?'White':'Black';
   setStatus(`${label}'s turn${hasMust?' — must capture':''}`, 'your-turn');
-  setBoardGlow('your-turn'); updateUndo(); draw();
+  setBoardGlow('your-turn');
+  if(hasMust&&mustList.length===1){ sel={r:mustList[0].r,c:mustList[0].c}; startHumanCapture(); return; }
+  updateUndo(); draw();
 }
 
 /* ── AI turn ──────────────────────────────────────────────── */
@@ -901,9 +906,12 @@ function finishAiTurn(){
   if(getAllMoves('w',board).length===0){ declareWin('b'); return; }
 
   calcGreenSquares();
-  const hasMust=hasMustCapture('w',board);
+  const mustListAi=mustCaptureList('w',board);
+  const hasMust=mustListAi.length>0;
   setStatus('Your turn'+(hasMust?' — must capture':''),'your-turn');
-  setBoardGlow('your-turn'); updateUndo(); draw();
+  setBoardGlow('your-turn');
+  if(hasMust&&mustListAi.length===1){ sel={r:mustListAi[0].r,c:mustListAi[0].c}; startHumanCapture(); return; }
+  updateUndo(); draw();
 }
 
 /* ── Undo ─────────────────────────────────────────────────── */
@@ -959,6 +967,10 @@ function draw(){
       ctx.fillStyle='rgba(40,180,80,0.22)'; ctx.fillRect(g.c*CS,g.r*CS,CS,CS);
       ctx.strokeStyle='#28b450'; ctx.lineWidth=2.5; ctx.strokeRect(g.c*CS+1.5,g.r*CS+1.5,CS-3,CS-3);
     }
+  }
+  if(midCapture&&midPiecePos){
+    ctx.fillStyle='rgba(40,180,80,0.22)'; ctx.fillRect(midPiecePos.c*CS,midPiecePos.r*CS,CS,CS);
+    ctx.strokeStyle='#28b450'; ctx.lineWidth=2.5; ctx.strokeRect(midPiecePos.c*CS+1.5,midPiecePos.r*CS+1.5,CS-3,CS-3);
   }
 
   // King flash overlay
@@ -1119,10 +1131,6 @@ async function onlineJoin(){
     onlineRoomRef=ref;
     ref.onDisconnect().update({status:'abandoned'});
     await ref.update({blackUid:uid,status:'playing'});
-    onlineRoomListener=ref.on('value',snap2=>{
-      const d2=snap2.val(); if(!d2) return;
-      if(d2.status==='abandoned'&&!gameOver&&onlineRole!==null) onlineDisconnected();
-    });
     startOnlineGame();
   }catch(e){ olShowMsg('Error: '+e.message,true); }
 }
@@ -1140,6 +1148,18 @@ function startOnlineGame(){
   resetHumanState();
   turn='w'; gameOver=false; aiThinking=false; animating=false; boardHistory=[];
   posHistory=new Map(); noCaptureHalf=0; kingFlashes=[]; stopThinking();
+
+  if(onlineRoomRef&&onlineRoomListener){ onlineRoomRef.off('value',onlineRoomListener); }
+  onlineRoomListener=onlineRoomRef.on('value',snap=>{
+    const d=snap.val(); if(!d) return;
+    if(d.status==='abandoned'&&!gameOver&&onlineRole!==null){ onlineDisconnected(); return; }
+    const opp=onlineRole==='w'?'b':'w';
+    if(gameOver&&d.rematch&&d.rematch[opp]&&!(d.rematch&&d.rematch[onlineRole])){
+      setStatus('Opponent wants a rematch — click Rematch to accept','your-turn');
+      const br=document.getElementById('btn-rematch'); br.style.display=''; br.disabled=false;
+    }
+    if(d.rematch&&d.rematch.w&&d.rematch.b) doRematch();
+  });
 
   onlineMovesRef=onlineRoomRef.child('moves');
   onlineMoveListener=onlineMovesRef.on('child_added',snap=>{
@@ -1194,9 +1214,12 @@ function finishOpponentTurn(){
   if(countPieces(turn,board)===0){ declareWin(turn==='w'?'b':'w'); return; }
   if(getAllMoves(turn,board).length===0){ declareWin(turn==='w'?'b':'w'); return; }
   calcGreenSquares();
-  const hasMust=hasMustCapture(turn,board);
+  const mustListOl=mustCaptureList(turn,board);
+  const hasMust=mustListOl.length>0;
   setStatus('Your turn'+(hasMust?' — must capture':''),'your-turn');
-  setBoardGlow('your-turn'); updateUndo(); draw();
+  setBoardGlow('your-turn');
+  if(hasMust&&mustListOl.length===1){ sel={r:mustListOl[0].r,c:mustListOl[0].c}; startHumanCapture(); return; }
+  updateUndo(); draw();
 }
 
 function onlineDisconnected(){
@@ -1205,12 +1228,45 @@ function onlineDisconnected(){
   setStatus('Opponent disconnected','game-over'); draw();
 }
 
+function requestRematch(){
+  if(!onlineRoomRef) return;
+  document.getElementById('btn-rematch').disabled=true;
+  onlineRoomRef.child('rematch/'+onlineRole).set(true);
+  setStatus('Waiting for opponent to accept rematch…','ai-turn');
+}
+
+function doRematch(){
+  if(onlineMovesRef&&onlineMoveListener){ onlineMovesRef.off('child_added',onlineMoveListener); onlineMoveListener=null; }
+  onlineRoomRef.child('moves').remove();
+  onlineRoomRef.child('rematch').remove();
+  document.getElementById('btn-rematch').style.display='none';
+  board=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+  for(let r=0;r<4;r++) for(let c=0;c<COLS;c++) if(isDark(r,c)) board[r][c]={color:'b',king:false};
+  for(let r=6;r<10;r++) for(let c=0;c<COLS;c++) if(isDark(r,c)) board[r][c]={color:'w',king:false};
+  resetHumanState();
+  turn='w'; gameOver=false; aiThinking=false; animating=false; boardHistory=[];
+  posHistory=new Map(); noCaptureHalf=0; kingFlashes=[]; stopThinking();
+  onlineMovesRef=onlineRoomRef.child('moves');
+  onlineMoveListener=onlineMovesRef.on('child_added',snap=>{
+    const mv=snap.val();
+    if(mv.role===onlineRole) return;
+    receiveOnlineMove(mv);
+  });
+  calcGreenSquares(); updateHud(); updateUndo(); updateStats();
+  const myTurn=onlineRole==='w';
+  const myColor=onlineRole==='w'?'White':'Black';
+  setStatus(myTurn?`Your turn — you are ${myColor}`:`Opponent's turn — you are ${myColor}`,
+            myTurn?'your-turn':'ai-turn');
+  setBoardGlow(myTurn?'your-turn':''); draw();
+}
+
 function cleanupOnline(){
   if(onlineMovesRef&&onlineMoveListener){ onlineMovesRef.off('child_added',onlineMoveListener); }
   if(onlineRoomRef&&onlineRoomListener){ onlineRoomRef.off('value',onlineRoomListener); }
   onlineMovesRef=null; onlineRoomRef=null;
   onlineMoveListener=null; onlineRoomListener=null;
   roomCode=null; onlineRole=null;
+  document.getElementById('btn-rematch').style.display='none';
 }
 
 window.addEventListener('resize',resize);
