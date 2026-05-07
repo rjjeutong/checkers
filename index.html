@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Checkers</title>
+<!-- Firebase — replace FIREBASE_CONFIG below with your project values -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -87,6 +91,35 @@ button.act:disabled { opacity: 0.3; cursor: default; }
 }
 #btn-done:hover { background: #8b4a2f; }
 
+/* ── Online overlay ────────────────────────────────────────── */
+#online-overlay {
+  position: fixed; inset: 0; z-index: 110;
+  background: rgba(0,0,0,0.82);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+#online-overlay.open { opacity: 1; pointer-events: all; }
+#online-panel {
+  background: #1e0f04; border: 2px solid #6b3a1f; border-radius: 12px;
+  padding: 20px 24px 24px; width: min(320px, 92vw); text-align: center;
+}
+#ol-code-display {
+  font-size: 40px; letter-spacing: 10px; color: #f0d0a0;
+  font-family: Georgia, serif; margin: 12px 0; padding: 10px;
+  border: 2px solid #6b3a1f; border-radius: 8px;
+  background: rgba(107,58,31,0.15);
+}
+#ol-code-input {
+  width: 150px; font-size: 28px; letter-spacing: 6px; text-align: center;
+  background: #0d0702; border: 2px solid #6b3a1f; border-radius: 6px;
+  color: #f0d0a0; font-family: Georgia, serif; padding: 8px; outline: none;
+  margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;
+}
+.ol-note { color: #b8956a; font-size: 12px; margin: 8px 0 16px; line-height: 1.6; }
+.ol-err  { color: #e88080; font-size: 12px; margin: 8px 0; }
+.ol-btn-row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+.ol-spin { color: #b8956a; font-size: 13px; margin: 16px 0; }
+
 /* ── Landscape layout ──────────────────────────────────────── */
 @media (orientation: landscape) and (max-height: 520px) {
   body { flex-direction: row; align-items: flex-start; justify-content: center; padding: 6px; gap: 10px; flex-wrap: nowrap; }
@@ -134,14 +167,62 @@ button.act:disabled { opacity: 0.3; cursor: default; }
         <button class="opt-btn" onclick="setMode('friend',this)">
           vs Friend<span class="opt-sub">pass &amp; play</span>
         </button>
-        <button class="opt-btn" disabled>
-          Online<span class="opt-sub">coming soon</span>
+        <button class="opt-btn" onclick="setMode('online',this)">
+          Online<span class="opt-sub">play a friend</span>
         </button>
       </div>
       <p class="set-note">Difficulty &amp; mode changes take effect on New Game.</p>
     </div>
 
     <button id="btn-done" onclick="closeSettings()">Done</button>
+  </div>
+</div>
+
+<!-- ── Online lobby overlay ──────────────────────────────── -->
+<div id="online-overlay">
+  <div id="online-panel">
+    <h2 class="set-title">Online Game</h2>
+
+    <!-- Screen 1: pick create or join -->
+    <div id="ol-pick">
+      <p class="ol-note">Play with a friend in real time.<br>No account needed.</p>
+      <div class="ol-btn-row">
+        <button class="act" onclick="onlineCreate()">Create Game</button>
+        <button class="act" onclick="olShowScreen('join')">Join Game</button>
+      </div>
+      <div class="ol-btn-row" style="margin-top:8px">
+        <button class="act" onclick="closeOnlineOverlay()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Screen 2: enter room code to join -->
+    <div id="ol-join" style="display:none">
+      <p class="ol-note">Enter your friend's 4-digit code:</p>
+      <input id="ol-code-input" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="0000">
+      <div id="ol-join-err" class="ol-err" style="display:none">Room not found or already started.</div>
+      <div class="ol-btn-row">
+        <button class="act" onclick="onlineJoin()">Join</button>
+        <button class="act" onclick="olShowScreen('pick')">Back</button>
+      </div>
+    </div>
+
+    <!-- Screen 3: waiting for opponent (host) -->
+    <div id="ol-waiting" style="display:none">
+      <p class="ol-note">Share this code with your friend:</p>
+      <div id="ol-code-display">----</div>
+      <p class="ol-note" style="margin-top:8px">Waiting for opponent…</p>
+      <div class="ol-btn-row">
+        <button class="act" onclick="cancelOnline()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Screen 4: generic connecting / error message -->
+    <div id="ol-msg" style="display:none">
+      <p class="ol-spin" id="ol-msg-text">Connecting…</p>
+      <div class="ol-btn-row" id="ol-msg-btn" style="display:none">
+        <button class="act" onclick="closeOnlineOverlay()">OK</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -339,7 +420,7 @@ function resize(){
 let wins=0, draws=0, losses=0;
 function updateStats(){
   const el=document.getElementById('stats');
-  if(gameMode==='friend'){ el.style.display='none'; return; }
+  if(gameMode!=='ai'){ el.style.display='none'; return; }
   el.style.display='';
   document.getElementById('st-w').textContent=wins;
   document.getElementById('st-d').textContent=draws;
@@ -381,13 +462,19 @@ function checkDraw(){
 let board=[], turn='w', gameOver=false, aiThinking=false, animating=false;
 let boardHistory=[];       // each entry: {bd, t}
 let sel=null, highlights=[], greenSquares=[];
-let midCapture=false, midPiecePos=null, midBoardSnap=null, midRemovedCaps=[], midMustLands=[];
+let midCapture=false, midPiecePos=null, midStartPos=null, midBoardSnap=null, midRemovedCaps=[], midMustLands=[];
+
+/* ── Online state ─────────────────────────────────────────── */
+let onlineRole=null, roomCode=null, myUid=null;
+let onlineRoomRef=null, onlineMovesRef=null;
+let onlineRoomListener=null, onlineMoveListener=null;
 let animPiece=null, animFrom=null, animPath=[], animCaps=[];
 let animStep=0, animCurrentPos=null, animRemovedSoFar=[], animDone=null;
 let thinkDots=0, thinkTimer=null;
 
 /* ── New game ─────────────────────────────────────────────── */
 function newGame(){
+  if(gameMode==='online'){ cleanupOnline(); openOnlineOverlay(); return; }
   board=Array.from({length:ROWS},()=>Array(COLS).fill(null));
   for(let r=0;r<4;r++)  for(let c=0;c<COLS;c++) if(isDark(r,c)) board[r][c]={color:'b',king:false};
   for(let r=6;r<10;r++) for(let c=0;c<COLS;c++) if(isDark(r,c)) board[r][c]={color:'w',king:false};
@@ -403,7 +490,7 @@ function newGame(){
 
 function resetHumanState(){
   sel=null; highlights=[];
-  midCapture=false; midPiecePos=null; midBoardSnap=null; midRemovedCaps=[]; midMustLands=[];
+  midCapture=false; midPiecePos=null; midStartPos=null; midBoardSnap=null; midRemovedCaps=[]; midMustLands=[];
 }
 
 /* ── Thinking indicator ───────────────────────────────────── */
@@ -418,6 +505,7 @@ function calcGreenSquares(){
   greenSquares=[];
   if(gameOver||aiThinking||animating||midCapture) return;
   if(gameMode==='ai'&&turn!=='w') return;
+  if(gameMode==='online'&&turn!==onlineRole) return;
   const mustList=mustCaptureList(turn,board);
   if(mustList.length>0){
     for(const m of mustList) greenSquares.push({r:m.r,c:m.c});
@@ -557,7 +645,11 @@ function getAllMoves(col,bd){
 /* ── Declare win / draw ───────────────────────────────────── */
 function declareWin(winner){
   gameOver=true; setBoardGlow('');
-  if(gameMode==='friend'){
+  if(gameMode==='online'){
+    const iWin=winner===onlineRole;
+    setStatus(iWin?'You win!':'You lose!',iWin?'game-over':'game-lose');
+    if(iWin) sndWin(); else sndLose();
+  } else if(gameMode==='friend'){
     const name=winner==='w'?'White':'Black';
     setStatus(`${name} wins!`, winner==='w'?'game-over':'game-lose');
     sndWin();
@@ -642,6 +734,7 @@ function tickAiAnim(){
 function handleBoardInput(x,y){
   if(gameOver||aiThinking||animating) return;
   if(gameMode==='ai'&&turn!=='w') return;
+  if(gameMode==='online'&&turn!==onlineRole) return;
 
   const cc=Math.floor(x/CS), r=Math.floor(y/CS);
   if(r<0||r>=ROWS||cc<0||cc>=COLS) return;
@@ -691,16 +784,18 @@ cv.addEventListener('touchstart',e=>{
 function commitSimpleMove(mv){
   const old=board.map(r=>r.map(x=>x?{...x}:null));
   boardHistory.push({bd:old,t:turn}); updateUndo();
+  const fromR=sel.r,fromC=sel.c;
   board=applyMove(sel.r,sel.c,mv,board);
   noCaptureHalf++;
   checkNewKings(old,board); sndMove();
+  if(gameMode==='online') sendOnlineMove(fromR,fromC,mv);
   resetHumanState(); finishHumanTurn();
 }
 
 function startHumanCapture(){
   boardHistory.push({bd:board.map(row=>row.map(x=>x?{...x}:null)),t:turn}); updateUndo();
   midBoardSnap=board.map(row=>row.map(x=>x?{...x}:null));
-  midPiecePos={r:sel.r,c:sel.c}; midRemovedCaps=[]; midCapture=true; sel=null; highlights=[];
+  midStartPos={r:sel.r,c:sel.c}; midPiecePos={r:sel.r,c:sel.c}; midRemovedCaps=[]; midCapture=true; sel=null; highlights=[];
   refreshMidCaptureLands(); draw();
 }
 function refreshMidCaptureLands(){
@@ -727,7 +822,12 @@ function finalizeHumanCapture(){
     if(pp.color==='b'&&midPiecePos.r===9) pp.king=true;
   }
   noCaptureHalf=0; board=midBoardSnap;
-  checkNewKings(old,board); resetHumanState(); finishHumanTurn();
+  checkNewKings(old,board);
+  if(gameMode==='online'){
+    const fullMove={r:midPiecePos.r,c:midPiecePos.c,caps:[...midRemovedCaps]};
+    sendOnlineMove(midStartPos.r,midStartPos.c,fullMove);
+  }
+  resetHumanState(); finishHumanTurn();
 }
 
 /* ── Finish human turn ────────────────────────────────────── */
@@ -744,6 +844,9 @@ function finishHumanTurn(){
 
   if(gameMode==='ai'&&justMoved==='w'){
     draw(); setStatus('AI is thinking','ai-turn'); startThinking(); setTimeout(runAi,800);
+  } else if(gameMode==='online'){
+    if(getAllMoves(turn,board).length===0){ declareWin(justMoved); return; }
+    setStatus("Opponent's turn",'ai-turn'); greenSquares=[]; draw();
   } else {
     setupFriendTurn();
   }
@@ -839,16 +942,22 @@ function undoMove(){
   setBoardGlow('your-turn'); updateHud(); updateUndo(); draw();
 }
 function updateUndo(){
-  document.getElementById('btn-undo').disabled=boardHistory.length===0||animating||aiThinking;
+  document.getElementById('btn-undo').disabled=
+    gameMode==='online'||boardHistory.length===0||animating||aiThinking;
 }
 
 /* ── UI helpers ───────────────────────────────────────────── */
 function setStatus(t,cls){ const el=document.getElementById('status'); el.textContent=t; el.className=cls||''; }
 function setBoardGlow(cls){ document.getElementById('board-wrap').className=cls||''; }
 function updateHud(){
-  const ai=gameMode==='ai';
-  document.getElementById('sc-w').textContent=`${ai?'White (you)':'White'}: ${countPieces('w',board)}`;
-  document.getElementById('sc-b').textContent=`${ai?'Black (AI)':'Black'}: ${countPieces('b',board)}`;
+  let wLabel='White', bLabel='Black';
+  if(gameMode==='ai'){ wLabel='White (you)'; bLabel='Black (AI)'; }
+  if(gameMode==='online'){
+    wLabel=onlineRole==='w'?'White (you)':'White';
+    bLabel=onlineRole==='b'?'Black (you)':'Black';
+  }
+  document.getElementById('sc-w').textContent=`${wLabel}: ${countPieces('w',board)}`;
+  document.getElementById('sc-b').textContent=`${bLabel}: ${countPieces('b',board)}`;
 }
 
 /* ── Draw canvas ──────────────────────────────────────────── */
@@ -937,6 +1046,189 @@ function drawPiece(p,cx,cy,rad,outlineColor){
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText('K',cx,cy+1);
   }
+}
+
+/* ── Firebase / Online multiplayer ────────────────────────── */
+
+// !! REPLACE these values with your Firebase project config !!
+// 1. Go to console.firebase.google.com → create a project
+// 2. Add a web app → copy the firebaseConfig object
+// 3. Enable Realtime Database (start in test mode, then tighten rules)
+// 4. Enable Authentication → Sign-in method → Anonymous
+// 5. Suggested database rules:
+//    { "rules": { "rooms": { "$c": { ".read":"auth!=null", ".write":"auth!=null" } } } }
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyDpS2_uKDB0XGqw25hH1fiKG5YM7X2AIS0",
+  authDomain:        "checkers-online-351e3.firebaseapp.com",
+  databaseURL:       "https://checkers-online-351e3-default-rtdb.firebaseio.com",
+  projectId:         "checkers-online-351e3",
+  storageBucket:     "checkers-online-351e3.firebasestorage.app",
+  messagingSenderId: "55085072845",
+  appId:             "1:55085072845:web:c38767e6b301a598cac484",
+};
+
+let _fbApp=null, _fbDb=null, _fbAuth=null;
+function initFirebase(){
+  if(_fbApp) return true;
+  if(FIREBASE_CONFIG.apiKey==='REPLACE_ME'){
+    olShowMsg('Firebase is not configured yet.\nSee the FIREBASE_CONFIG comment in index.html.',true);
+    return false;
+  }
+  try{
+    _fbApp=firebase.initializeApp(FIREBASE_CONFIG);
+    _fbDb=firebase.database();
+    _fbAuth=firebase.auth();
+    return true;
+  }catch(e){ olShowMsg('Firebase init failed: '+e.message,true); return false; }
+}
+
+async function _signIn(){
+  if(myUid) return myUid;
+  const r=await _fbAuth.signInAnonymously();
+  myUid=r.user.uid; return myUid;
+}
+
+/* Overlay helpers */
+function openOnlineOverlay(){ olShowScreen('pick'); document.getElementById('online-overlay').classList.add('open'); }
+function closeOnlineOverlay(){ document.getElementById('online-overlay').classList.remove('open'); }
+function olShowScreen(name){
+  ['pick','join','waiting','msg'].forEach(s=>document.getElementById('ol-'+s).style.display=s===name?'':'none');
+}
+function olShowMsg(txt,showOk=false){
+  olShowScreen('msg');
+  document.getElementById('ol-msg-text').textContent=txt;
+  document.getElementById('ol-msg-btn').style.display=showOk?'':'none';
+}
+
+async function onlineCreate(){
+  if(!initFirebase()) return;
+  olShowMsg('Creating room…');
+  try{
+    const uid=await _signIn();
+    const code=String(Math.floor(1000+Math.random()*9000));
+    roomCode=code; onlineRole='w';
+    const ref=_fbDb.ref('rooms/'+code);
+    await ref.set({whiteUid:uid,blackUid:null,status:'waiting',createdAt:Date.now()});
+    onlineRoomRef=ref;
+    ref.onDisconnect().update({status:'abandoned'});
+    document.getElementById('ol-code-display').textContent=code;
+    olShowScreen('waiting');
+    onlineRoomListener=ref.on('value',snap=>{
+      const d=snap.val(); if(!d) return;
+      if(d.status==='playing'&&d.blackUid){ ref.off('value',onlineRoomListener); onlineRoomListener=null; startOnlineGame(); }
+      if(d.status==='abandoned'&&gameOver===false&&onlineRole!==null){ onlineDisconnected(); }
+    });
+  }catch(e){ olShowMsg('Error: '+e.message,true); }
+}
+
+async function onlineJoin(){
+  if(!initFirebase()) return;
+  const code=document.getElementById('ol-code-input').value.trim();
+  if(!/^\d{4}$/.test(code)){ document.getElementById('ol-join-err').style.display=''; return; }
+  document.getElementById('ol-join-err').style.display='none';
+  olShowMsg('Joining…');
+  try{
+    const uid=await _signIn();
+    const ref=_fbDb.ref('rooms/'+code);
+    const snap=await ref.once('value');
+    const d=snap.val();
+    if(!d||d.status!=='waiting'){ olShowMsg('Room not found or already started.',true); return; }
+    roomCode=code; onlineRole='b';
+    onlineRoomRef=ref;
+    ref.onDisconnect().update({status:'abandoned'});
+    await ref.update({blackUid:uid,status:'playing'});
+    onlineRoomListener=ref.on('value',snap2=>{
+      const d2=snap2.val(); if(!d2) return;
+      if(d2.status==='abandoned'&&!gameOver&&onlineRole!==null) onlineDisconnected();
+    });
+    startOnlineGame();
+  }catch(e){ olShowMsg('Error: '+e.message,true); }
+}
+
+function cancelOnline(){
+  if(onlineRoomRef) onlineRoomRef.update({status:'abandoned'});
+  cleanupOnline(); closeOnlineOverlay();
+}
+
+function startOnlineGame(){
+  closeOnlineOverlay();
+  board=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+  for(let r=0;r<4;r++) for(let c=0;c<COLS;c++) if(isDark(r,c)) board[r][c]={color:'b',king:false};
+  for(let r=6;r<10;r++) for(let c=0;c<COLS;c++) if(isDark(r,c)) board[r][c]={color:'w',king:false};
+  resetHumanState();
+  turn='w'; gameOver=false; aiThinking=false; animating=false; boardHistory=[];
+  posHistory=new Map(); noCaptureHalf=0; kingFlashes=[]; stopThinking();
+
+  onlineMovesRef=onlineRoomRef.child('moves');
+  onlineMoveListener=onlineMovesRef.on('child_added',snap=>{
+    const mv=snap.val();
+    if(mv.uid===myUid) return;
+    receiveOnlineMove(mv);
+  });
+
+  calcGreenSquares(); updateHud(); updateUndo(); updateStats();
+  const myTurn=onlineRole==='w';
+  const myColor=onlineRole==='w'?'White':'Black';
+  setStatus(myTurn?`Your turn — you are ${myColor}`:`Opponent's turn — you are ${myColor}`,
+            myTurn?'your-turn':'ai-turn');
+  setBoardGlow(myTurn?'your-turn':''); draw();
+}
+
+function sendOnlineMove(fr,fc,move){
+  if(!onlineMovesRef) return;
+  onlineMovesRef.push({
+    uid:myUid, fr, fc,
+    tr:move.r, tc:move.c,
+    caps:(move.caps||[]).map(cp=>({r:cp.r,c:cp.c})),
+    ts:Date.now(),
+  });
+}
+
+function receiveOnlineMove(mv){
+  if(gameOver||animating) return;
+  const move={r:mv.tr,c:mv.tc,caps:(mv.caps||[]).map(cp=>({r:cp.r,c:cp.c}))};
+  const fr=mv.fr,fc=mv.fc;
+  const old=board.map(r=>r.map(x=>x?{...x}:null));
+  const hadCaps=move.caps.length>0;
+  if(!hadCaps) noCaptureHalf++; else noCaptureHalf=0;
+  if(!hadCaps){
+    board=applyMove(fr,fc,move,board);
+    checkNewKings(old,board); sndMove(); finishOpponentTurn();
+  } else {
+    const piece={...board[fr][fc]};
+    startAiAnimation(piece,fr,fc,move,()=>{
+      const prev=board.map(r=>r.map(x=>x?{...x}:null));
+      board=applyMove(fr,fc,move,board);
+      checkNewKings(prev,board); finishOpponentTurn();
+    });
+  }
+}
+
+function finishOpponentTurn(){
+  turn=onlineRole; updateHud();
+  recordPos();
+  const drawReason=checkDraw();
+  if(drawReason){ declareDraw(drawReason); return; }
+  if(countPieces(turn,board)===0){ declareWin(turn==='w'?'b':'w'); return; }
+  if(getAllMoves(turn,board).length===0){ declareWin(turn==='w'?'b':'w'); return; }
+  calcGreenSquares();
+  const hasMust=hasMustCapture(turn,board);
+  setStatus('Your turn'+(hasMust?' — must capture':''),'your-turn');
+  setBoardGlow('your-turn'); updateUndo(); draw();
+}
+
+function onlineDisconnected(){
+  if(gameOver) return;
+  gameOver=true; setBoardGlow('');
+  setStatus('Opponent disconnected','game-over'); draw();
+}
+
+function cleanupOnline(){
+  if(onlineMovesRef&&onlineMoveListener){ onlineMovesRef.off('child_added',onlineMoveListener); }
+  if(onlineRoomRef&&onlineRoomListener){ onlineRoomRef.off('value',onlineRoomListener); }
+  onlineMovesRef=null; onlineRoomRef=null;
+  onlineMoveListener=null; onlineRoomListener=null;
+  roomCode=null; onlineRole=null;
 }
 
 window.addEventListener('resize',resize);
