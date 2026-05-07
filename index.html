@@ -268,16 +268,18 @@ function getCaptures(r,c,bd,vis=null){
       if(mr<0||mr>=ROWS||mc<0||mc>=COLS)continue;
       const mid=bd[mr][mc];if(!mid||mid.color===p.color)continue;
       const mk=mr+','+mc;if(vis.has(mk))continue;
+      const dirCands=[];let anyCont=false;
       let lr=mr+dr,lc=mc+dc;
       while(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc]){
         const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
         bd2[lr][lc]={...bd2[r][c]};bd2[r][c]=null;bd2[mr][mc]=null;
         const v2=new Set(vis);v2.add(mk);
         const further=getCaptures(lr,lc,bd2,v2);
-        if(further.length===0)caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
-        else for(const f of further)caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
+        if(further.length===0)dirCands.push({stop:true,r:lr,c:lc,caps:[{r:mr,c:mc}]});
+        else{anyCont=true;for(const f of further)dirCands.push({stop:false,r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});}
         lr+=dr;lc+=dc;
       }
+      for(const cd of dirCands){if(anyCont&&cd.stop)continue;caps.push({r:cd.r,c:cd.c,caps:cd.caps});}
     }
   }else{
     for(const[dr,dc]of ALL_DIRS){
@@ -549,8 +551,18 @@ function getSingleCaptures(r,c,bd,removedKeys){
       if(mr<0||mr>=ROWS||mc<0||mc>=COLS) continue;
       const mid=bd[mr][mc]; if(!mid||mid.color===p.color) continue;
       const mk=`${mr},${mc}`; if(removedKeys&&removedKeys.has(mk)) continue;
+      const dirLands=[]; let anyCont=false;
       let lr=mr+dr,lc=mc+dc;
-      while(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc]){ caps.push({r:lr,c:lc,capR:mr,capC:mc}); lr+=dr; lc+=dc; }
+      while(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc]){
+        const sim=bd.map(row=>row.map(x=>x?{...x}:null));
+        sim[lr][lc]={...sim[r][c]}; sim[r][c]=null; sim[mr][mc]=null;
+        const further=getCaptures(lr,lc,sim);
+        const hasCont=further.length>0;
+        if(hasCont) anyCont=true;
+        dirLands.push({r:lr,c:lc,capR:mr,capC:mc,hasCont});
+        lr+=dr; lc+=dc;
+      }
+      for(const ld of dirLands){ if(anyCont&&!ld.hasCont) continue; caps.push({r:ld.r,c:ld.c,capR:ld.capR,capC:ld.capC}); }
     }
   } else {
     for(const [dr,dc] of ALL_DIRS){
@@ -576,16 +588,18 @@ function getCaptures(r,c,bd,vis=null){
       if(mr<0||mr>=ROWS||mc<0||mc>=COLS) continue;
       const mid=bd[mr][mc]; if(!mid||mid.color===p.color) continue;
       const mk=`${mr},${mc}`; if(vis.has(mk)) continue;
+      const dirCands=[]; let anyCont=false;
       let lr=mr+dr,lc=mc+dc;
       while(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc]){
         const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
         bd2[lr][lc]={...bd2[r][c]}; bd2[r][c]=null; bd2[mr][mc]=null;
         const v2=new Set(vis); v2.add(mk);
         const further=getCaptures(lr,lc,bd2,v2);
-        if(further.length===0) caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
-        else for(const f of further) caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
+        if(further.length===0) dirCands.push({stop:true,r:lr,c:lc,caps:[{r:mr,c:mc}]});
+        else { anyCont=true; for(const f of further) dirCands.push({stop:false,r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]}); }
         lr+=dr; lc+=dc;
       }
+      for(const cd of dirCands){ if(anyCont&&cd.stop) continue; caps.push({r:cd.r,c:cd.c,caps:cd.caps}); }
     }
   } else {
     for(const [dr,dc] of ALL_DIRS){
