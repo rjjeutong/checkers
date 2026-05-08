@@ -120,6 +120,16 @@ button.act:disabled { opacity: 0.3; cursor: default; }
 .ol-btn-row { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
 .ol-spin { color: #b8956a; font-size: 13px; margin: 16px 0; }
 
+/* ── In-game chat ──────────────────────────────────────────── */
+#chat-area { display:none; margin-top:10px; width:100%; max-width:400px; }
+#chat-msgs { height:88px; overflow-y:auto; background:rgba(0,0,0,0.25); border:1px solid #3a1f08; border-radius:6px; padding:5px 8px; font-size:11px; line-height:1.6; }
+.chat-me  { color:#8ab8d8; text-align:right; }
+.chat-opp { color:#d4a96a; }
+#chat-row { display:flex; gap:5px; margin-top:5px; }
+#chat-in  { flex:1; padding:5px 8px; background:#0d0702; border:1px solid #5a3e2b; border-radius:5px; color:#d4a96a; font-size:12px; font-family:Georgia,serif; outline:none; }
+#chat-send { padding:5px 12px; background:#5a3e2b; border:none; border-radius:5px; color:#d4a96a; font-size:12px; font-family:Georgia,serif; cursor:pointer; }
+#chat-send:hover { background:#7a5a3b; }
+
 /* ── Landscape layout ──────────────────────────────────────── */
 @media (orientation: landscape) and (max-height: 520px) {
   body { flex-direction: row; align-items: flex-start; justify-content: center; padding: 6px; gap: 10px; flex-wrap: nowrap; }
@@ -237,6 +247,13 @@ button.act:disabled { opacity: 0.3; cursor: default; }
     <button class="act" id="btn-undo" onclick="undoMove()" disabled>Undo</button>
     <button class="act" onclick="newGame()">New Game</button>
     <button class="act" id="btn-rematch" onclick="requestRematch()" style="display:none">Rematch</button>
+  </div>
+  <div id="chat-area">
+    <div id="chat-msgs"></div>
+    <div id="chat-row">
+      <input id="chat-in" placeholder="Message…" maxlength="200" onkeydown="if(event.key==='Enter')sendChatMsg()">
+      <button id="chat-send" onclick="sendChatMsg()">Send</button>
+    </div>
   </div>
   <div id="info">Green = playable pieces. Blue = where to land. Tap a different piece to change during captures.</div>
 </div>
@@ -473,6 +490,7 @@ let midCapture=false, midPiecePos=null, midStartPos=null, midBoardSnap=null, mid
 let onlineRole=null, roomCode=null, myUid=null;
 let onlineRoomRef=null, onlineMovesRef=null;
 let onlineRoomListener=null, onlineMoveListener=null;
+let onlineChatRef=null, onlineChatListener=null;
 let animPiece=null, animFrom=null, animPath=[], animCaps=[];
 let animStep=0, animCurrentPos=null, animRemovedSoFar=[], animDone=null;
 let thinkDots=0, thinkTimer=null;
@@ -756,7 +774,9 @@ function handleBoardInput(x,y){
   if(gameMode==='ai'&&turn!=='w') return;
   if(gameMode==='online'&&turn!==onlineRole) return;
 
-  const cc=Math.floor(x/CS), r=Math.floor(y/CS);
+  const _fl=gameMode==='online'&&onlineRole==='b';
+  const cc=_fl?COLS-1-Math.floor(x/CS):Math.floor(x/CS);
+  const r=_fl?ROWS-1-Math.floor(y/CS):Math.floor(y/CS);
   if(r<0||r>=ROWS||cc<0||cc>=COLS) return;
 
   const mustList=mustCaptureList(turn,board);
@@ -976,6 +996,8 @@ function updateHud(){
 function draw(){
   if(!CS) return;
   ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.save();
+  if(gameMode==='online'&&onlineRole==='b'){ ctx.translate(cv.width,cv.height); ctx.scale(-1,-1); }
 
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
     ctx.fillStyle=isDark(r,c)?SQ_DARK:SQ_LIGHT;
@@ -1041,6 +1063,7 @@ function draw(){
   if(animating&&animCurrentPos){
     drawPiece(animPiece,animCurrentPos.c*CS+CS/2,animCurrentPos.r*CS+CS/2,CS/2-CS*0.09,'#ffdd44');
   }
+  ctx.restore();
 }
 
 function drawPiece(p,cx,cy,rad,outlineColor){
@@ -1191,6 +1214,14 @@ function startOnlineGame(){
     receiveOnlineMove(mv);
   });
 
+  if(onlineChatRef&&onlineChatListener){ onlineChatRef.off('child_added',onlineChatListener); }
+  onlineChatRef=onlineRoomRef.child('messages');
+  document.getElementById('chat-msgs').innerHTML='';
+  document.getElementById('chat-area').style.display='';
+  onlineChatListener=onlineChatRef.on('child_added',snap=>{
+    const m=snap.val(); appendChatMsg(m.role===onlineRole,m.text);
+  });
+
   calcGreenSquares(); updateHud(); updateUndo(); updateStats();
   const myTurn=onlineRole==='w';
   const myColor=onlineRole==='w'?'White':'Black';
@@ -1260,9 +1291,11 @@ function requestRematch(){
 
 function doRematch(){
   if(onlineMovesRef&&onlineMoveListener){ onlineMovesRef.off('child_added',onlineMoveListener); onlineMoveListener=null; }
+  onlineRole=onlineRole==='w'?'b':'w';
   onlineRoomRef.child('moves').remove();
   onlineRoomRef.child('rematch').remove();
   document.getElementById('btn-rematch').style.display='none';
+  document.getElementById('chat-msgs').innerHTML='';
   board=Array.from({length:ROWS},()=>Array(COLS).fill(null));
   for(let r=0;r<4;r++) for(let c=0;c<COLS;c++) if(isDark(r,c)) board[r][c]={color:'b',king:false};
   for(let r=6;r<10;r++) for(let c=0;c<COLS;c++) if(isDark(r,c)) board[r][c]={color:'w',king:false};
@@ -1283,13 +1316,31 @@ function doRematch(){
   setBoardGlow(myTurn?'your-turn':''); draw();
 }
 
+function sendChatMsg(){
+  const inp=document.getElementById('chat-in');
+  const text=inp.value.trim(); if(!text||!onlineChatRef) return;
+  inp.value='';
+  onlineChatRef.push({role:onlineRole,text,ts:Date.now()});
+}
+function appendChatMsg(mine,text){
+  const msgs=document.getElementById('chat-msgs');
+  const div=document.createElement('div');
+  div.className=mine?'chat-me':'chat-opp';
+  div.textContent=(mine?'You: ':'Opp: ')+text;
+  msgs.appendChild(div); msgs.scrollTop=msgs.scrollHeight;
+}
+
 function cleanupOnline(){
   if(onlineMovesRef&&onlineMoveListener){ onlineMovesRef.off('child_added',onlineMoveListener); }
   if(onlineRoomRef&&onlineRoomListener){ onlineRoomRef.off('value',onlineRoomListener); }
+  if(onlineChatRef&&onlineChatListener){ onlineChatRef.off('child_added',onlineChatListener); }
   onlineMovesRef=null; onlineRoomRef=null;
   onlineMoveListener=null; onlineRoomListener=null;
+  onlineChatRef=null; onlineChatListener=null;
   roomCode=null; onlineRole=null;
   document.getElementById('btn-rematch').style.display='none';
+  document.getElementById('chat-area').style.display='none';
+  document.getElementById('chat-msgs').innerHTML='';
 }
 
 window.addEventListener('resize',resize);
