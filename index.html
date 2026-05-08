@@ -258,12 +258,13 @@ function getMoves(r,c,bd){
       if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&!bd[nr][nc])ms.push({r:nr,c:nc,caps:[]});}
   }return ms;
 }
-function getCaptures(r,c,bd,vis=null){
+function getCaptures(r,c,bd,vis=null,fdr=0,fdc=0){
   const p=bd[r][c];if(!p)return[];
   if(!vis)vis=new Set();vis.add(r+','+c);
   const caps=[];
   if(p.king){
     for(const[dr,dc]of ALL_DIRS){
+      if(fdr!==0&&dr===fdr&&dc===fdc)continue;
       let mr=r+dr,mc=c+dc;
       while(mr>=0&&mr<ROWS&&mc>=0&&mc<COLS&&!bd[mr][mc]){mr+=dr;mc+=dc;}
       if(mr<0||mr>=ROWS||mc<0||mc>=COLS)continue;
@@ -275,7 +276,7 @@ function getCaptures(r,c,bd,vis=null){
         const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
         bd2[lr][lc]={...bd2[r][c]};bd2[r][c]=null;bd2[mr][mc]=null;
         const v2=new Set(vis);v2.add(mk);
-        const further=getCaptures(lr,lc,bd2,v2);
+        const further=getCaptures(lr,lc,bd2,v2,-dr,-dc);
         if(further.length===0)dirCands.push({stop:true,r:lr,c:lc,caps:[{r:mr,c:mc}]});
         else{anyCont=true;for(const f of further)dirCands.push({stop:false,r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});}
         lr+=dr;lc+=dc;
@@ -542,11 +543,12 @@ function getMoves(r,c,bd){
   return ms;
 }
 
-function getSingleCaptures(r,c,bd,removedKeys){
+function getSingleCaptures(r,c,bd,removedKeys,fdr=0,fdc=0){
   const p=bd[r][c]; if(!p) return [];
   const caps=[];
   if(p.king){
     for(const [dr,dc] of ALL_DIRS){
+      if(fdr!==0&&dr===fdr&&dc===fdc) continue;
       let mr=r+dr,mc=c+dc;
       while(mr>=0&&mr<ROWS&&mc>=0&&mc<COLS&&!bd[mr][mc]){mr+=dr;mc+=dc;}
       if(mr<0||mr>=ROWS||mc<0||mc>=COLS) continue;
@@ -818,7 +820,13 @@ function startHumanCapture(){
 }
 function refreshMidCaptureLands(){
   const rk=new Set(midRemovedCaps.map(c=>`${c.r},${c.c}`));
-  midMustLands=getSingleCaptures(midPiecePos.r,midPiecePos.c,midBoardSnap,rk);
+  let fdr=0,fdc=0;
+  if(midRemovedCaps.length>0){
+    const last=midRemovedCaps[midRemovedCaps.length-1];
+    fdr=-Math.sign(midPiecePos.r-last.r);
+    fdc=-Math.sign(midPiecePos.c-last.c);
+  }
+  midMustLands=getSingleCaptures(midPiecePos.r,midPiecePos.c,midBoardSnap,rk,fdr,fdc);
 }
 function doHumanCaptureStep(landing){
   sndCapture();
