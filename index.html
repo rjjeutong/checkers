@@ -258,34 +258,9 @@ function getMoves(r,c,bd){
       if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&!bd[nr][nc])ms.push({r:nr,c:nc,caps:[]});}
   }return ms;
 }
-function getCaptures(r,c,bd,vis=null,inChain=false){
+function getCaptures(r,c,bd,vis=null){
   const p=bd[r][c];if(!p)return[];
-  if(!vis)vis=new Set();vis.add(r+','+c);
-  if(inChain){
-    let forkCount=0;
-    if(p.king){
-      for(const[dr,dc]of ALL_DIRS){
-        let mr=r+dr,mc=c+dc;
-        while(mr>=0&&mr<ROWS&&mc>=0&&mc<COLS&&!bd[mr][mc]){mr+=dr;mc+=dc;}
-        if(mr<0||mr>=ROWS||mc<0||mc>=COLS)continue;
-        const mid=bd[mr][mc];if(!mid||mid.color===p.color)continue;
-        if(vis.has(mr+','+mc))continue;
-        const lr=mr+dr,lc=mc+dc;
-        if(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc])forkCount++;
-      }
-    }else{
-      for(const[dr,dc]of ALL_DIRS){
-        const mr=r+dr,mc=c+dc,lr=r+2*dr,lc=c+2*dc;
-        if(lr<0||lr>=ROWS||lc<0||lc>=COLS)continue;
-        const mid=bd[mr][mc];if(!mid||mid.color===p.color)continue;
-        if(bd[lr][lc])continue;
-        if(vis.has(mr+','+mc))continue;
-        forkCount++;
-      }
-    }
-    if(forkCount>1)return[];
-  }
-  const caps=[];
+  if(!vis)vis=new Set();vis.add(r+','+c);const caps=[];
   if(p.king){
     for(const[dr,dc]of ALL_DIRS){
       let mr=r+dr,mc=c+dc;
@@ -299,7 +274,7 @@ function getCaptures(r,c,bd,vis=null,inChain=false){
         const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
         bd2[lr][lc]={...bd2[r][c]};bd2[r][c]=null;bd2[mr][mc]=null;
         const v2=new Set(vis);v2.add(mk);
-        const further=getCaptures(lr,lc,bd2,v2,true);
+        const further=getCaptures(lr,lc,bd2,v2);
         if(further.length===0)dirCands.push({stop:true,r:lr,c:lc,caps:[{r:mr,c:mc}]});
         else{anyCont=true;for(const f of further)dirCands.push({stop:false,r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});}
         lr+=dr;lc+=dc;
@@ -316,7 +291,7 @@ function getCaptures(r,c,bd,vis=null,inChain=false){
       const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
       bd2[lr][lc]={...bd2[r][c]};bd2[r][c]=null;bd2[mr][mc]=null;
       const v2=new Set(vis);v2.add(mk);
-      const further=getCaptures(lr,lc,bd2,v2,true);
+      const further=getCaptures(lr,lc,bd2,v2);
       if(further.length===0)caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
       else for(const f of further)caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
     }
@@ -602,33 +577,9 @@ function getSingleCaptures(r,c,bd,removedKeys){
   return caps;
 }
 
-function getCaptures(r,c,bd,vis=null,inChain=false){
+function getCaptures(r,c,bd,vis=null){
   const p=bd[r][c]; if(!p) return [];
   if(!vis) vis=new Set(); vis.add(`${r},${c}`);
-  if(inChain){
-    let forkCount=0;
-    if(p.king){
-      for(const [dr,dc] of ALL_DIRS){
-        let mr=r+dr,mc=c+dc;
-        while(mr>=0&&mr<ROWS&&mc>=0&&mc<COLS&&!bd[mr][mc]){mr+=dr;mc+=dc;}
-        if(mr<0||mr>=ROWS||mc<0||mc>=COLS) continue;
-        const mid=bd[mr][mc]; if(!mid||mid.color===p.color) continue;
-        if(vis.has(`${mr},${mc}`)) continue;
-        const lr=mr+dr,lc=mc+dc;
-        if(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc]) forkCount++;
-      }
-    } else {
-      for(const [dr,dc] of ALL_DIRS){
-        const mr=r+dr,mc=c+dc,lr=r+2*dr,lc=c+2*dc;
-        if(lr<0||lr>=ROWS||lc<0||lc>=COLS) continue;
-        const mid=bd[mr][mc]; if(!mid||mid.color===p.color) continue;
-        if(bd[lr][lc]) continue;
-        if(vis.has(`${mr},${mc}`)) continue;
-        forkCount++;
-      }
-    }
-    if(forkCount>1) return [];
-  }
   const caps=[];
   if(p.king){
     for(const [dr,dc] of ALL_DIRS){
@@ -643,7 +594,7 @@ function getCaptures(r,c,bd,vis=null,inChain=false){
         const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
         bd2[lr][lc]={...bd2[r][c]}; bd2[r][c]=null; bd2[mr][mc]=null;
         const v2=new Set(vis); v2.add(mk);
-        const further=getCaptures(lr,lc,bd2,v2,true);
+        const further=getCaptures(lr,lc,bd2,v2);
         if(further.length===0) dirCands.push({stop:true,r:lr,c:lc,caps:[{r:mr,c:mc}]});
         else { anyCont=true; for(const f of further) dirCands.push({stop:false,r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]}); }
         lr+=dr; lc+=dc;
@@ -660,7 +611,7 @@ function getCaptures(r,c,bd,vis=null,inChain=false){
       const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
       bd2[lr][lc]={...bd2[r][c]}; bd2[r][c]=null; bd2[mr][mc]=null;
       const v2=new Set(vis); v2.add(mk);
-      const further=getCaptures(lr,lc,bd2,v2,true);
+      const further=getCaptures(lr,lc,bd2,v2);
       if(further.length===0) caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
       else for(const f of further) caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
     }
@@ -866,15 +817,7 @@ function startHumanCapture(){
 }
 function refreshMidCaptureLands(){
   const rk=new Set(midRemovedCaps.map(c=>`${c.r},${c.c}`));
-  const singles=getSingleCaptures(midPiecePos.r,midPiecePos.c,midBoardSnap,rk);
-  console.log('refreshMid: pos=',midPiecePos,'removed=',midRemovedCaps.length,'singles=',singles.length,singles);
-  if(midRemovedCaps.length>0&&singles.length>0){
-    const dirs=new Set();
-    for(const s of singles) dirs.add(Math.sign(s.capR-midPiecePos.r)+','+Math.sign(s.capC-midPiecePos.c));
-    console.log('refreshMid: dirs=',dirs.size,[...dirs]);
-    if(dirs.size>1){midMustLands=[];return;}
-  }
-  midMustLands=singles;
+  midMustLands=getSingleCaptures(midPiecePos.r,midPiecePos.c,midBoardSnap,rk);
 }
 function doHumanCaptureStep(landing){
   sndCapture();
