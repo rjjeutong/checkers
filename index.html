@@ -258,33 +258,9 @@ function getMoves(r,c,bd){
       if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&!bd[nr][nc])ms.push({r:nr,c:nc,caps:[]});}
   }return ms;
 }
-function getCaptures(r,c,bd,vis=null,inChain=false){
+function getCaptures(r,c,bd,vis=null){
   const p=bd[r][c];if(!p)return[];
   if(!vis)vis=new Set();vis.add(r+','+c);
-  if(inChain){
-    let forkCount=0;
-    if(p.king){
-      for(const[dr,dc]of ALL_DIRS){
-        let mr=r+dr,mc=c+dc;
-        while(mr>=0&&mr<ROWS&&mc>=0&&mc<COLS&&!bd[mr][mc]){mr+=dr;mc+=dc;}
-        if(mr<0||mr>=ROWS||mc<0||mc>=COLS)continue;
-        const mid=bd[mr][mc];if(!mid||mid.color===p.color)continue;
-        if(vis.has(mr+','+mc))continue;
-        const lr=mr+dr,lc=mc+dc;
-        if(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc])forkCount++;
-      }
-    }else{
-      for(const[dr,dc]of ALL_DIRS){
-        const mr=r+dr,mc=c+dc,lr=r+2*dr,lc=c+2*dc;
-        if(lr<0||lr>=ROWS||lc<0||lc>=COLS)continue;
-        const mid=bd[mr][mc];if(!mid||mid.color===p.color)continue;
-        if(bd[lr][lc])continue;
-        if(vis.has(mr+','+mc))continue;
-        forkCount++;
-      }
-    }
-    if(forkCount>1)return[];
-  }
   const caps=[];
   if(p.king){
     for(const[dr,dc]of ALL_DIRS){
@@ -299,12 +275,26 @@ function getCaptures(r,c,bd,vis=null,inChain=false){
         const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
         bd2[lr][lc]={...bd2[r][c]};bd2[r][c]=null;bd2[mr][mc]=null;
         const v2=new Set(vis);v2.add(mk);
-        const further=getCaptures(lr,lc,bd2,v2,true);
-        if(further.length===0)dirCands.push({stop:true,r:lr,c:lc,caps:[{r:mr,c:mc}]});
-        else{anyCont=true;for(const f of further)dirCands.push({stop:false,r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});}
+        let fk=0;
+        for(const[ddr,ddc]of ALL_DIRS){
+          let emr=lr+ddr,emc=lc+ddc;
+          while(emr>=0&&emr<ROWS&&emc>=0&&emc<COLS&&!bd2[emr][emc]){emr+=ddr;emc+=ddc;}
+          if(emr<0||emr>=ROWS||emc<0||emc>=COLS)continue;
+          const emid=bd2[emr][emc];if(!emid||emid.color===p.color)continue;
+          if(v2.has(emr+','+emc))continue;
+          const elr=emr+ddr,elc=emc+ddc;
+          if(elr>=0&&elr<ROWS&&elc>=0&&elc<COLS&&!bd2[elr][elc])fk++;
+        }
+        if(fk>=2){
+          dirCands.push({stop:true,fork:true,r:lr,c:lc,caps:[{r:mr,c:mc}]});
+        }else{
+          const further=getCaptures(lr,lc,bd2,v2);
+          if(further.length===0)dirCands.push({stop:true,fork:false,r:lr,c:lc,caps:[{r:mr,c:mc}]});
+          else{anyCont=true;for(const f of further)dirCands.push({stop:false,fork:false,r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});}
+        }
         lr+=dr;lc+=dc;
       }
-      for(const cd of dirCands){if(anyCont&&cd.stop)continue;caps.push({r:cd.r,c:cd.c,caps:cd.caps});}
+      for(const cd of dirCands){if(anyCont&&cd.stop&&!cd.fork)continue;caps.push({r:cd.r,c:cd.c,caps:cd.caps});}
     }
   }else{
     for(const[dr,dc]of ALL_DIRS){
@@ -316,9 +306,22 @@ function getCaptures(r,c,bd,vis=null,inChain=false){
       const bd2=bd.map(row=>row.map(x=>x?{...x}:null));
       bd2[lr][lc]={...bd2[r][c]};bd2[r][c]=null;bd2[mr][mc]=null;
       const v2=new Set(vis);v2.add(mk);
-      const further=getCaptures(lr,lc,bd2,v2,true);
-      if(further.length===0)caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
-      else for(const f of further)caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
+      let fk=0;
+      for(const[ddr,ddc]of ALL_DIRS){
+        const emr=lr+ddr,emc=lc+ddc,elr=lr+2*ddr,elc=lc+2*ddc;
+        if(elr<0||elr>=ROWS||elc<0||elc>=COLS)continue;
+        const emid=bd2[emr][emc];if(!emid||emid.color===p.color)continue;
+        if(bd2[elr][elc])continue;
+        if(v2.has(emr+','+emc))continue;
+        fk++;
+      }
+      if(fk>=2){
+        caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+      }else{
+        const further=getCaptures(lr,lc,bd2,v2);
+        if(further.length===0)caps.push({r:lr,c:lc,caps:[{r:mr,c:mc}]});
+        else for(const f of further)caps.push({r:f.r,c:f.c,caps:[{r:mr,c:mc},...f.caps]});
+      }
     }
   }return caps;
 }
@@ -840,8 +843,36 @@ function startHumanCapture(){
   midStartPos={r:sel.r,c:sel.c}; midPiecePos={r:sel.r,c:sel.c}; midRemovedCaps=[]; midCapture=true; sel=null; highlights=[];
   refreshMidCaptureLands(); draw();
 }
+function countCaptureDirs(r,c,bd,rk){
+  const p=bd[r][c]; if(!p) return 0;
+  let n=0;
+  if(p.king){
+    for(const [dr,dc] of ALL_DIRS){
+      let mr=r+dr,mc=c+dc;
+      while(mr>=0&&mr<ROWS&&mc>=0&&mc<COLS&&!bd[mr][mc]){mr+=dr;mc+=dc;}
+      if(mr<0||mr>=ROWS||mc<0||mc>=COLS) continue;
+      const mid=bd[mr][mc]; if(!mid||mid.color===p.color) continue;
+      if(rk&&rk.has(`${mr},${mc}`)) continue;
+      const lr=mr+dr,lc=mc+dc;
+      if(lr>=0&&lr<ROWS&&lc>=0&&lc<COLS&&!bd[lr][lc]) n++;
+    }
+  } else {
+    for(const [dr,dc] of ALL_DIRS){
+      const mr=r+dr,mc=c+dc,lr=r+2*dr,lc=c+2*dc;
+      if(lr<0||lr>=ROWS||lc<0||lc>=COLS) continue;
+      const mid=bd[mr][mc]; if(!mid||mid.color===p.color) continue;
+      if(bd[lr][lc]) continue;
+      if(rk&&rk.has(`${mr},${mc}`)) continue;
+      n++;
+    }
+  }
+  return n;
+}
 function refreshMidCaptureLands(){
   const rk=new Set(midRemovedCaps.map(c=>`${c.r},${c.c}`));
+  if(midRemovedCaps.length>0&&countCaptureDirs(midPiecePos.r,midPiecePos.c,midBoardSnap,rk)>=2){
+    midMustLands=[]; return;
+  }
   midMustLands=getSingleCaptures(midPiecePos.r,midPiecePos.c,midBoardSnap,rk);
 }
 function doHumanCaptureStep(landing){
