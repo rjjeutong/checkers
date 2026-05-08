@@ -1217,7 +1217,7 @@ function startOnlineGame(){
   if(onlineChatRef&&onlineChatListener){ onlineChatRef.off('child_added',onlineChatListener); }
   onlineChatRef=onlineRoomRef.child('messages');
   document.getElementById('chat-msgs').innerHTML='';
-  document.getElementById('chat-area').style.display='';
+  document.getElementById('chat-area').style.display='block';
   onlineChatListener=onlineChatRef.on('child_added',snap=>{
     const m=snap.val(); appendChatMsg(m.role===onlineRole,m.text);
   });
