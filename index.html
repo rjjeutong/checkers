@@ -867,9 +867,11 @@ function startHumanCapture(){
 function refreshMidCaptureLands(){
   const rk=new Set(midRemovedCaps.map(c=>`${c.r},${c.c}`));
   const singles=getSingleCaptures(midPiecePos.r,midPiecePos.c,midBoardSnap,rk);
+  console.log('refreshMid: pos=',midPiecePos,'removed=',midRemovedCaps.length,'singles=',singles.length,singles);
   if(midRemovedCaps.length>0&&singles.length>0){
     const dirs=new Set();
     for(const s of singles) dirs.add(Math.sign(s.capR-midPiecePos.r)+','+Math.sign(s.capC-midPiecePos.c));
+    console.log('refreshMid: dirs=',dirs.size,[...dirs]);
     if(dirs.size>1){midMustLands=[];return;}
   }
   midMustLands=singles;
